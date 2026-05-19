@@ -85,6 +85,8 @@ button { font-family: var(--font-b); cursor: pointer; }
 .big-input::placeholder { color: var(--dim); }
 .prog-btn { display: block; width: 100%; text-align: left; background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 1rem; margin-bottom: 0.625rem; transition: border-color 0.15s; }
 .prog-btn:hover { border-color: var(--blue); }
+.day-block { margin-bottom: 1.5rem; }
+.day-head { display: flex; align-items: center; gap: 8px; margin-bottom: 0.75rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border); }
 .empty-state { text-align: center; padding: 4rem 1rem; color: var(--muted); }
 .empty-state h2 { font-family: var(--font-h); font-size: 36px; letter-spacing: 3px; color: #fff; margin-bottom: 0.625rem; }
 .toast { position: fixed; bottom: 1.5rem; left: 50%; transform: translateX(-50%); background: var(--blue); color: #fff; padding: 10px 20px; border-radius: 8px; font-size: 13px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; z-index: 999; white-space: nowrap; pointer-events: none; animation: slideUp 0.2s ease; }
@@ -108,6 +110,25 @@ const ADMIN_PASSWORD    = 'Ple@se.Let.Me.In.21';
 const { useState, useEffect, useRef } = React;
 const sb  = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const uid = () => Math.random().toString(36).slice(2, 9);
+
+// A program's content lives in a `days` array:
+//   days: [ { id, name, exercises: [ { id, name, sets:[...] } ] } ]
+// Older programs stored a flat `exercises` array — normalizeDays() wraps those
+// into a single "Day 1" so old and new data both render. Days are persisted in
+// the existing `exercises` JSONB column, so no Supabase schema change is needed.
+function normalizeDays(p) {
+  const raw = Array.isArray(p.days) ? p.days
+            : Array.isArray(p.exercises) ? p.exercises : [];
+  if (raw.length && raw[0] && Array.isArray(raw[0].exercises)) return raw;   // already days
+  if (raw.length) return [{ id: uid(), name: "Day 1", exercises: raw }];     // legacy flat list
+  return [];
+}
+function programStats(p) {
+  const days = p.days || [];
+  const ex   = days.reduce((a,d) => a + (d.exercises||[]).length, 0);
+  const sets = days.reduce((a,d) => a + (d.exercises||[]).reduce((b,e)=>b+(e.sets||[]).length,0), 0);
+  return { days: days.length, ex, sets };
+}
 
 function loadWeights(pid) {
   try { const v = localStorage.getItem('cx-w-' + pid); return v ? JSON.parse(v) : {}; } catch { return {}; }
@@ -161,7 +182,7 @@ function ViewerHome({ programs, loading, onSelect, onAdminTap }) {
           <button key={p.id} className="prog-btn" onClick={() => onSelect(p)}>
             <p style={{fontFamily:"var(--font-h)",fontSize:20,letterSpacing:"1.5px",marginBottom:4}}>{p.name.toUpperCase()}</p>
             <p style={{fontSize:12,color:"var(--muted)"}}>
-              {(p.exercises||[]).length} exercise{(p.exercises||[]).length!==1?"s":""} &nbsp;·&nbsp; {(p.exercises||[]).reduce((a,e)=>a+(e.sets||[]).length,0)} sets
+              {programStats(p).days} day{programStats(p).days!==1?"s":""} &nbsp;·&nbsp; {programStats(p).ex} exercise{programStats(p).ex!==1?"s":""}
             </p>
           </button>
         ))}
@@ -170,27 +191,58 @@ function ViewerHome({ programs, loading, onSelect, onAdminTap }) {
   );
 }
 
-// ─── VIEWER: program detail ───────────────────────────────────────────────────
+// ─── VIEWER: program detail (days) ────────────────────────────────────────────
 function ViewerProgram({ program, onBack, onAdminTap }) {
   const [weights, setWeightsState] = useState(() => loadWeights(program.id));
   const [toast, setToast] = useState(null);
-  const exercises = program.exercises || [];
+  const [dayIdx, setDayIdx] = useState(null);
+  const days = program.days || [];
 
   const handleWeight = (exId, setId, val) => {
     const w = {...weights, [exId+'-'+setId]: val};
     setWeightsState(w); storeWeights(program.id, w);
   };
 
+  // ── Day list ──
+  if (dayIdx === null) {
+    return (
+      <div className="app">
+        <Logo onTripleTap={onAdminTap} />
+        <div className="topbar">
+          <BackBtn onClick={onBack} />
+          <span className="page-title" style={{fontSize:18}}>{program.name.toUpperCase()}</span>
+          <button className="btn btn-sm btn-ghost" onClick={() => copyToClipboard(shareUrl(program.id), () => setToast("Link copied!"))}>Share</button>
+        </div>
+        <div className="screen" style={{paddingTop:"0.875rem"}}>
+          <p className="section-label">Training days</p>
+          {days.length === 0 ? <p style={{color:"var(--muted)",fontSize:14}}>No days yet.</p>
+          : days.map((d, di) => {
+            const n = (d.exercises||[]).length;
+            return (
+              <button key={d.id} className="prog-btn" onClick={() => setDayIdx(di)}>
+                <p style={{fontFamily:"var(--font-h)",fontSize:20,letterSpacing:"1.5px",marginBottom:4}}>{(d.name||("Day "+(di+1))).toUpperCase()}</p>
+                <p style={{fontSize:12,color:"var(--muted)"}}>{n} exercise{n!==1?"s":""}</p>
+              </button>
+            );
+          })}
+        </div>
+        {toast && <Toast msg={toast} onDone={() => setToast(null)} />}
+      </div>
+    );
+  }
+
+  // ── Day detail (enter weights) ──
+  const day = days[dayIdx] || { name:"", exercises:[] };
+  const exercises = day.exercises || [];
   return (
     <div className="app">
       <Logo onTripleTap={onAdminTap} />
       <div className="topbar">
-        <BackBtn onClick={onBack} />
-        <span className="page-title" style={{fontSize:18}}>{program.name.toUpperCase()}</span>
-        <button className="btn btn-sm btn-ghost" onClick={() => copyToClipboard(shareUrl(program.id), () => setToast("Link copied!"))}>Share</button>
+        <BackBtn onClick={() => setDayIdx(null)} />
+        <span className="page-title" style={{fontSize:18}}>{(day.name||("Day "+(dayIdx+1))).toUpperCase()}</span>
       </div>
       <div className="screen" style={{paddingTop:"0.875rem"}}>
-        {exercises.length === 0 ? <p style={{color:"var(--muted)",fontSize:14}}>No exercises yet.</p>
+        {exercises.length === 0 ? <p style={{color:"var(--muted)",fontSize:14}}>No exercises in this day.</p>
         : exercises.map(ex => (
           <div className="card" key={ex.id}>
             <div className="card-head">
@@ -273,7 +325,7 @@ function AdminDash({ programs, loading, onEdit, onDelete, onNew, onExit }) {
             </div>
             <div style={{padding:"0.75rem 1rem",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
               <p style={{fontSize:12,color:"var(--muted)"}}>
-                {(p.exercises||[]).length} exercise{(p.exercises||[]).length!==1?"s":""} · {(p.exercises||[]).reduce((a,e)=>a+(e.sets||[]).length,0)} sets
+                {programStats(p).days} day{programStats(p).days!==1?"s":""} · {programStats(p).ex} exercise{programStats(p).ex!==1?"s":""} · {programStats(p).sets} sets
               </p>
               <button className="btn btn-ghost btn-sm" onClick={() => copyToClipboard(shareUrl(p.id), () => setToast("Link copied!"))}>Copy link</button>
             </div>
@@ -287,18 +339,25 @@ function AdminDash({ programs, loading, onEdit, onDelete, onNew, onExit }) {
 
 // ─── ADMIN: editor ───────────────────────────────────────────────────────────
 function AdminEditor({ program, onSave, onCancel, saving }) {
-  const [name, setName]           = useState(program?.name||"");
-  const [exercises, setExercises] = useState(program?.exercises||[]);
-  const [toast, setToast]         = useState(null);
-
   const mkSet = (p) => ({ id:uid(), reps:p?.reps||8, tempo:p?.tempo||"3010", targetWeight:p?.targetWeight||0, unit:p?.unit||"kg" });
   const mkEx  = ()  => ({ id:uid(), name:"", sets:[mkSet()] });
-  const addEx  = ()          => setExercises([...exercises, mkEx()]);
-  const rmEx   = (ei)        => setExercises(exercises.filter((_,i)=>i!==ei));
-  const updEx  = (ei,k,v)    => { const e=[...exercises]; e[ei]={...e[ei],[k]:v}; setExercises(e); };
-  const addSet = (ei)        => { const e=[...exercises]; const s=e[ei].sets; e[ei].sets=[...s,mkSet(s[s.length-1])]; setExercises(e); };
-  const rmSet  = (ei,si)     => { const e=[...exercises]; e[ei].sets=e[ei].sets.filter((_,i)=>i!==si); setExercises(e); };
-  const updSet = (ei,si,k,v) => { const e=[...exercises]; e[ei].sets[si]={...e[ei].sets[si],[k]:v}; setExercises(e); };
+  const mkDay = (n) => ({ id:uid(), name:"Day "+n, exercises:[] });
+
+  const [name, setName] = useState(program?.name||"");
+  const [days, setDays] = useState(() => (program?.days && program.days.length) ? program.days : [mkDay(1)]);
+  const [toast, setToast] = useState(null);
+
+  const setDay = (di, fn)     => setDays(ds => ds.map((d,i)=> i===di ? fn(d) : d));
+  const setEx  = (di, ei, fn) => setDay(di, d => ({...d, exercises: d.exercises.map((e,i)=> i===ei ? fn(e) : e)}));
+
+  const addDay = ()           => setDays(ds => [...ds, mkDay(ds.length+1)]);
+  const rmDay  = (di)         => setDays(ds => ds.filter((_,i)=>i!==di));
+  const addEx  = (di)         => setDay(di, d => ({...d, exercises:[...d.exercises, mkEx()]}));
+  const rmEx   = (di,ei)      => setDay(di, d => ({...d, exercises:d.exercises.filter((_,i)=>i!==ei)}));
+  const updEx  = (di,ei,k,v)  => setEx(di,ei, e => ({...e, [k]:v}));
+  const addSet = (di,ei)      => setEx(di,ei, e => ({...e, sets:[...e.sets, mkSet(e.sets[e.sets.length-1])]}));
+  const rmSet  = (di,ei,si)   => setEx(di,ei, e => ({...e, sets:e.sets.filter((_,i)=>i!==si)}));
+  const updSet = (di,ei,si,k,v) => setEx(di,ei, e => ({...e, sets:e.sets.map((s,i)=> i===si ? {...s,[k]:v} : s)}));
 
   return (
     <div className="app">
@@ -308,42 +367,51 @@ function AdminEditor({ program, onSave, onCancel, saving }) {
         <span className="page-title" style={{fontSize:18}}>{program ? "Edit" : "New Program"}</span>
         <div style={{display:"flex",gap:6}}>
           {program?.id && <button className="btn btn-sm" onClick={() => copyToClipboard(shareUrl(program.id), () => setToast("Link copied!"))}>Copy link</button>}
-          <button className="btn btn-primary btn-sm" onClick={() => name.trim()&&onSave({id:program?.id||uid(),name:name.trim(),exercises})} disabled={!name.trim()||saving}>
+          <button className="btn btn-primary btn-sm" onClick={() => name.trim()&&onSave({id:program?.id||uid(),name:name.trim(),days})} disabled={!name.trim()||saving}>
             {saving?"Saving...":"Save"}
           </button>
         </div>
       </div>
       <div className="screen" style={{paddingTop:"0.875rem"}}>
-        <input className="big-input" value={name} onChange={e=>setName(e.target.value)} placeholder="Program name (e.g. Push Day A)" />
-        {exercises.map((ex,ei) => (
-          <div className="card" key={ex.id}>
-            <div className="card-head">
-              <input className="plain-input-head" value={ex.name} onChange={e=>updEx(ei,"name",e.target.value)} placeholder="Exercise name" />
-              <button className="btn btn-sm btn-danger" onClick={()=>rmEx(ei)}>✕</button>
+        <input className="big-input" value={name} onChange={e=>setName(e.target.value)} placeholder="Program name (e.g. Hypertrophy Block)" />
+        {days.map((day,di) => (
+          <div className="day-block" key={day.id}>
+            <div className="day-head">
+              <input className="plain-input-head" style={{fontSize:22}} value={day.name} onChange={e=>setDay(di, d=>({...d,name:e.target.value}))} placeholder={"Day "+(di+1)} />
+              <button className="btn btn-sm btn-danger" onClick={()=>{ if(confirm('Delete "'+(day.name||("Day "+(di+1)))+'"?')) rmDay(di); }}>Delete day</button>
             </div>
-            <div className="col-labels" style={{gridTemplateColumns:"22px 58px 76px 1fr 22px"}}>
-              {["#","Reps","Tempo","Weight",""].map((h,i)=><span key={i} className="col-label">{h}</span>)}
-            </div>
-            {ex.sets.map((s,si) => (
-              <div key={s.id} className="set-row" style={{gridTemplateColumns:"22px 58px 76px 1fr 22px"}}>
-                <span style={{fontSize:13,color:"var(--blue)",fontFamily:"var(--font-h)",letterSpacing:1}}>{si+1}</span>
-                <input type="number" className="mono" value={s.reps} onChange={e=>updSet(ei,si,"reps",parseInt(e.target.value)||0)} style={{width:"100%",padding:"5px 6px",fontSize:13}} />
-                <input className="mono" value={s.tempo} onChange={e=>updSet(ei,si,"tempo",e.target.value)} placeholder="3010" style={{width:"100%",padding:"5px 6px",fontSize:13}} />
-                <div style={{display:"flex",gap:4}}>
-                  <input type="number" className="mono" value={s.targetWeight} onChange={e=>updSet(ei,si,"targetWeight",parseFloat(e.target.value)||0)} style={{flex:1,padding:"5px 6px",fontSize:13,minWidth:0}} />
-                  <select value={s.unit} onChange={e=>updSet(ei,si,"unit",e.target.value)} style={{width:46,padding:"5px 3px",fontSize:11}}>
-                    <option>kg</option><option>lbs</option>
-                  </select>
+            {day.exercises.map((ex,ei) => (
+              <div className="card" key={ex.id}>
+                <div className="card-head">
+                  <input className="plain-input-head" value={ex.name} onChange={e=>updEx(di,ei,"name",e.target.value)} placeholder="Exercise name" />
+                  <button className="btn btn-sm btn-danger" onClick={()=>rmEx(di,ei)}>✕</button>
                 </div>
-                <button onClick={()=>rmSet(ei,si)} style={{background:"none",border:"none",color:"var(--muted)",fontSize:16,cursor:"pointer",padding:0,lineHeight:1}}>✕</button>
+                <div className="col-labels" style={{gridTemplateColumns:"22px 58px 76px 1fr 22px"}}>
+                  {["#","Reps","Tempo","Weight",""].map((h,i)=><span key={i} className="col-label">{h}</span>)}
+                </div>
+                {ex.sets.map((s,si) => (
+                  <div key={s.id} className="set-row" style={{gridTemplateColumns:"22px 58px 76px 1fr 22px"}}>
+                    <span style={{fontSize:13,color:"var(--blue)",fontFamily:"var(--font-h)",letterSpacing:1}}>{si+1}</span>
+                    <input type="number" className="mono" value={s.reps} onChange={e=>updSet(di,ei,si,"reps",parseInt(e.target.value)||0)} style={{width:"100%",padding:"5px 6px",fontSize:13}} />
+                    <input className="mono" value={s.tempo} onChange={e=>updSet(di,ei,si,"tempo",e.target.value)} placeholder="3010" style={{width:"100%",padding:"5px 6px",fontSize:13}} />
+                    <div style={{display:"flex",gap:4}}>
+                      <input type="number" className="mono" value={s.targetWeight} onChange={e=>updSet(di,ei,si,"targetWeight",parseFloat(e.target.value)||0)} style={{flex:1,padding:"5px 6px",fontSize:13,minWidth:0}} />
+                      <select value={s.unit} onChange={e=>updSet(di,ei,si,"unit",e.target.value)} style={{width:46,padding:"5px 3px",fontSize:11}}>
+                        <option>kg</option><option>lbs</option>
+                      </select>
+                    </div>
+                    <button onClick={()=>rmSet(di,ei,si)} style={{background:"none",border:"none",color:"var(--muted)",fontSize:16,cursor:"pointer",padding:0,lineHeight:1}}>✕</button>
+                  </div>
+                ))}
+                <div style={{padding:"8px 1rem"}}>
+                  <button className="btn btn-sm" onClick={()=>addSet(di,ei)}>+ Set</button>
+                </div>
               </div>
             ))}
-            <div style={{padding:"8px 1rem"}}>
-              <button className="btn btn-sm" onClick={()=>addSet(ei)}>+ Set</button>
-            </div>
+            <button className="btn btn-full" onClick={()=>addEx(di)}>+ Exercise</button>
           </div>
         ))}
-        <button className="btn btn-full" onClick={addEx}>+ Exercise</button>
+        <button className="btn btn-full btn-primary" onClick={addDay}>+ Day</button>
       </div>
       {toast && <Toast msg={toast} onDone={() => setToast(null)} />}
     </div>
@@ -362,8 +430,9 @@ function App() {
 
   const fetchPrograms = async () => {
     const { data } = await sb.from("programs").select("*").order("created_at", { ascending: true });
-    if (data) setPrograms(data);
-    return data || [];
+    const list = (data || []).map(p => ({ ...p, days: normalizeDays(p) }));
+    setPrograms(list);
+    return list;
   };
 
   useEffect(() => {
@@ -386,7 +455,9 @@ function App() {
 
   const handleSave = async (prog) => {
     setSaving(true);
-    const payload = { id: prog.id, name: prog.name, exercises: prog.exercises, updated_at: new Date().toISOString() };
+    // The day structure is stored in the existing `exercises` JSONB column so
+    // no Supabase schema migration is needed (normalizeDays reads it back).
+    const payload = { id: prog.id, name: prog.name, exercises: prog.days, updated_at: new Date().toISOString() };
     if (!editing) payload.created_at = new Date().toISOString();
     await sb.from("programs").upsert(payload, { onConflict: "id" });
     await fetchPrograms();
