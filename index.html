@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
-<meta name="apple-mobile-web-app-title" content="CORTX">
+<meta name="apple-mobile-web-app-title" content="Personal Lifts">
 <meta name="theme-color" content="#000000">
-<title>CORTX Training</title>
+<title>Personal Lifts</title>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -15,7 +15,7 @@
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <style>
 :root {
-  --blue: #1782c5;
+  --blue: #9a9a9a;
   --bg: #000;
   --card: #0f0f0f;
   --border: #222;
@@ -60,11 +60,11 @@ button { font-family: var(--font-b); cursor: pointer; }
   background: transparent; color: var(--text); transition: all 0.15s;
 }
 .btn:hover { border-color: rgba(255,255,255,0.35); background: rgba(255,255,255,0.04); }
-.btn-primary { background: var(--blue); border-color: var(--blue); color: #fff; }
-.btn-primary:hover { background: #1a93db; border-color: #1a93db; }
+.btn-primary { background: var(--blue); border-color: var(--blue); color: #111; }
+.btn-primary:hover { background: #b5b5b5; border-color: #b5b5b5; }
 .btn-sm { padding: 5px 11px; font-size: 11px; }
-.btn-danger { border-color: rgba(220,60,60,0.3); color: #e05555; }
-.btn-danger:hover { background: rgba(220,60,60,0.08); }
+.btn-danger { border-color: rgba(255,255,255,0.25); color: #cfcfcf; }
+.btn-danger:hover { background: rgba(255,255,255,0.06); }
 .btn-ghost { border-color: transparent; color: var(--muted); }
 .btn-ghost:hover { color: #fff; background: transparent; }
 .btn-ghost:disabled { opacity: 0.25; }
@@ -78,7 +78,7 @@ button { font-family: var(--font-b); cursor: pointer; }
 .set-row { display: grid; gap: 6px; padding: 8px 1rem; align-items: center; border-bottom: 1px solid var(--border2); }
 .set-row:last-child { border-bottom: none; }
 .section-label { font-size: 10px; color: var(--dim); text-transform: uppercase; letter-spacing: 2.5px; font-weight: 500; margin-bottom: 0.75rem; }
-.chip { display: inline-flex; align-items: center; padding: 3px 8px; background: rgba(23,130,197,0.12); border: 1px solid rgba(23,130,197,0.25); border-radius: 4px; font-size: 10px; color: var(--blue); font-weight: 600; letter-spacing: 1px; text-transform: uppercase; }
+.chip { display: inline-flex; align-items: center; padding: 3px 8px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.18); border-radius: 4px; font-size: 10px; color: #d0d0d0; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; }
 .chip-dim { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.1); color: var(--muted); }
 .plain-input { background: none; border: none; outline: none; color: var(--text); font-family: var(--font-b); font-size: 14px; font-weight: 500; padding: 0; width: 100%; }
 .plain-input-head { background: none; border: none; outline: none; color: #fff; font-family: var(--font-h); font-size: 18px; letter-spacing: 1.5px; padding: 0; width: 100%; }
@@ -91,11 +91,11 @@ button { font-family: var(--font-b); cursor: pointer; }
 .day-head { display: flex; align-items: center; gap: 8px; margin-bottom: 0.75rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border); }
 .empty-state { text-align: center; padding: 4rem 1rem; color: var(--muted); }
 .empty-state h2 { font-family: var(--font-h); font-size: 36px; letter-spacing: 3px; color: #fff; margin-bottom: 0.625rem; }
-.toast { position: fixed; bottom: 1.5rem; left: 50%; transform: translateX(-50%); background: var(--blue); color: #fff; padding: 10px 20px; border-radius: 8px; font-size: 13px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; z-index: 999; white-space: nowrap; pointer-events: none; animation: slideUp 0.2s ease; }
+.toast { position: fixed; bottom: 1.5rem; left: 50%; transform: translateX(-50%); background: var(--blue); color: #111; padding: 10px 20px; border-radius: 8px; font-size: 13px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; z-index: 999; white-space: nowrap; pointer-events: none; animation: slideUp 0.2s ease; }
 @keyframes slideUp { from { opacity: 0; transform: translateX(-50%) translateY(8px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
 .loading-screen { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; gap: 1rem; }
 .mono { font-variant-numeric: tabular-nums; }
-.grp { border: 1px solid rgba(23,130,197,0.35); border-radius: 12px; padding: 0.625rem; margin-bottom: 0.875rem; background: rgba(23,130,197,0.04); }
+.grp { border: 1px solid rgba(255,255,255,0.22); border-radius: 12px; padding: 0.625rem; margin-bottom: 0.875rem; background: rgba(255,255,255,0.03); }
 .grp-head { display: flex; align-items: center; gap: 8px; margin: 0.125rem 0.25rem 0.625rem; }
 .grp .card { margin-bottom: 0.625rem; }
 .grp .card:last-child { margin-bottom: 0; }
@@ -220,7 +220,7 @@ function Logo({ onTripleTap }) {
   return (
     <div className="logo-bar">
       <div onClick={tap} style={{cursor:"default"}}>
-        <div className="logo-wordmark">CORT<span>X</span></div>
+        <div className="logo-wordmark">Personal Lifts</div>
         <div className="logo-sub">Sports Performance</div>
       </div>
     </div>
@@ -407,8 +407,8 @@ function AdminGate({ onAuth, onCancel }) {
       <Logo onTripleTap={() => {}} />
       <div className="screen" style={{paddingTop:"2rem"}}>
         <p className="section-label" style={{marginBottom:"1.5rem"}}>Admin access</p>
-        <input type="password" value={pw} onChange={e => setPw(e.target.value)} onKeyDown={e => e.key==="Enter"&&attempt()} placeholder="Password" style={{width:"100%",marginBottom:"0.875rem",borderColor:err?"#e05555":undefined}} autoFocus />
-        {err && <p style={{fontSize:12,color:"#e05555",marginBottom:"0.875rem"}}>Wrong password</p>}
+        <input type="password" value={pw} onChange={e => setPw(e.target.value)} onKeyDown={e => e.key==="Enter"&&attempt()} placeholder="Password" style={{width:"100%",marginBottom:"0.875rem",borderColor:err?"#cfcfcf":undefined}} autoFocus />
+        {err && <p style={{fontSize:12,color:"#cfcfcf",marginBottom:"0.875rem"}}>Wrong password</p>}
         <div style={{display:"flex",gap:8}}>
           <button className="btn btn-primary" style={{flex:1}} onClick={attempt}>Enter</button>
           <button className="btn" onClick={onCancel}>Cancel</button>
@@ -657,7 +657,7 @@ function App() {
 
   if (screen === "loading") return (
     <div className="loading-screen">
-      <div style={{fontFamily:"var(--font-h)",fontSize:40,letterSpacing:5,color:"#fff"}}>CORT<span style={{color:"var(--blue)"}}>X</span></div>
+      <div style={{fontFamily:"var(--font-h)",fontSize:40,letterSpacing:5,color:"#fff"}}>Personal Lifts</div>
       <p style={{fontSize:10,color:"var(--dim)",letterSpacing:"4px",textTransform:"uppercase"}}>Loading</p>
     </div>
   );
