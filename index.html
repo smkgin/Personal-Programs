@@ -37,6 +37,7 @@ input, select {
 }
 input:focus, select:focus { border-color: var(--blue); }
 input::placeholder { color: var(--dim); }
+input:disabled, select:disabled { opacity: 0.4; cursor: not-allowed; }
 select option { background: #181818; }
 input[type=number]::-webkit-inner-spin-button { opacity: 0.3; }
 button { font-family: var(--font-b); cursor: pointer; }
@@ -66,6 +67,7 @@ button { font-family: var(--font-b); cursor: pointer; }
 .btn-danger:hover { background: rgba(220,60,60,0.08); }
 .btn-ghost { border-color: transparent; color: var(--muted); }
 .btn-ghost:hover { color: #fff; background: transparent; }
+.btn-ghost:disabled { opacity: 0.25; }
 .btn-full { width: 100%; }
 .btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 0.875rem; overflow: hidden; }
@@ -93,6 +95,13 @@ button { font-family: var(--font-b); cursor: pointer; }
 @keyframes slideUp { from { opacity: 0; transform: translateX(-50%) translateY(8px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
 .loading-screen { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; gap: 1rem; }
 .mono { font-variant-numeric: tabular-nums; }
+.grp { border: 1px solid rgba(23,130,197,0.35); border-radius: 12px; padding: 0.625rem; margin-bottom: 0.875rem; background: rgba(23,130,197,0.04); }
+.grp-head { display: flex; align-items: center; gap: 8px; margin: 0.125rem 0.25rem 0.625rem; }
+.grp .card { margin-bottom: 0.625rem; }
+.grp .card:last-child { margin-bottom: 0; }
+.ex-tag { font-family: var(--font-h); font-size: 15px; letter-spacing: 1px; color: var(--blue); flex-shrink: 0; }
+.blk-head { padding: 0.625rem 0.75rem; border-bottom: 1px solid var(--border2); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.timed-row { display: flex; gap: 8px; padding: 0.875rem 1rem; }
 </style>
 </head>
 <body>
@@ -111,30 +120,85 @@ const { useState, useEffect, useRef } = React;
 const sb  = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const uid = () => Math.random().toString(36).slice(2, 9);
 
-// A program's content lives in a `days` array:
-//   days: [ { id, name, exercises: [ { id, name, sets:[...] } ] } ]
-// Older programs stored a flat `exercises` array — normalizeDays() wraps those
-// into a single "Day 1" so old and new data both render. Days are persisted in
-// the existing `exercises` JSONB column, so no Supabase schema change is needed.
+// ── Data model ────────────────────────────────────────────────────────────────
+// program.days = [ { id, name, blocks:[ block ] } ]
+// block.type ∈ warmup | solo | superset | triset | cooldown
+//   warmup / cooldown have a `mode`:
+//     'timed'    → an activity + duration (e.g. "Bike — 10 min")
+//     'exercise' → a normal exercise with sets
+//   exercise count per type: solo=1, superset=2, triset=3, warmup/cooldown=1
+// exercise = { id, name, unit, sets:[ { id, reps, tempo, rpe } ] }
+//   set #, reps, tempo, RPE are set by the ADMIN.
+//   RIR + weight are entered by the ATHLETE in the viewer and saved to
+//   localStorage (never written back to Supabase).
+// Days are persisted in the existing `exercises` JSONB column — no schema change.
+const BTYPES  = ["warmup","solo","superset","triset","cooldown"];
+const BLABEL  = { warmup:"Warm Up", solo:"Solo", superset:"Superset", triset:"Triset", cooldown:"Cool Down" };
+const EXCOUNT = { warmup:1, solo:1, superset:2, triset:3, cooldown:1 };
+
+const mkSet = (p) => ({ id:uid(), reps:(p&&p.reps!=null)?p.reps:8, tempo:(p&&p.tempo)||"3010", rpe:(p&&p.rpe!=null)?String(p.rpe):"" });
+const mkEx  = (p) => ({
+  id:(p&&p.id)||uid(),
+  name:(p&&p.name)||"",
+  unit:(p&&p.unit)||(p&&p.sets&&p.sets[0]&&p.sets[0].unit)||"kg",
+  sets:(p&&p.sets&&p.sets.length)?p.sets.map(mkSet):[mkSet()],
+});
+function fitEx(list, n) {
+  const a = (list||[]).map(mkEx);
+  while (a.length < n) a.push(mkEx());
+  return a.slice(0, n);
+}
+const mkBlock = (type) => {
+  type = BTYPES.includes(type) ? type : "solo";
+  const wc = type==="warmup" || type==="cooldown";
+  const mode = wc ? "timed" : "exercise";
+  return { id:uid(), type, mode, activity:"", duration:"", exercises: mode==="timed" ? [] : fitEx([], EXCOUNT[type]) };
+};
+function normBlock(b) {
+  b = b || {};
+  const type = BTYPES.includes(b.type) ? b.type : "solo";
+  const wc = type==="warmup" || type==="cooldown";
+  const mode = wc ? (b.mode==="exercise" ? "exercise" : "timed") : "exercise";
+  return {
+    id: b.id || uid(),
+    type, mode,
+    activity: b.activity || "",
+    duration: b.duration || "",
+    exercises: mode==="timed" ? [] : fitEx(b.exercises, EXCOUNT[type]),
+  };
+}
+function normalizeBlocks(d) {
+  if (Array.isArray(d.blocks))    return d.blocks.map(normBlock);
+  if (Array.isArray(d.exercises)) return d.exercises.map(e => normBlock({ type:"solo", mode:"exercise", exercises:[e] }));
+  return [];
+}
+// Wraps legacy data (flat exercise list, or days with `exercises`) into the new
+// day → blocks shape so old and new programs both render.
 function normalizeDays(p) {
   const raw = Array.isArray(p.days) ? p.days
             : Array.isArray(p.exercises) ? p.exercises : [];
-  if (raw.length && raw[0] && Array.isArray(raw[0].exercises)) return raw;   // already days
-  if (raw.length) return [{ id: uid(), name: "Day 1", exercises: raw }];     // legacy flat list
-  return [];
+  let days;
+  if (raw.length && raw[0] && (Array.isArray(raw[0].blocks) || Array.isArray(raw[0].exercises))) days = raw;          // already days
+  else if (raw.length) days = [{ id: uid(), name: "Day 1", exercises: raw }];                                         // legacy flat list
+  else days = [];
+  return days.map(d => ({ id: d.id || uid(), name: d.name || "", blocks: normalizeBlocks(d) }));
 }
 function programStats(p) {
   const days = p.days || [];
-  const ex   = days.reduce((a,d) => a + (d.exercises||[]).length, 0);
-  const sets = days.reduce((a,d) => a + (d.exercises||[]).reduce((b,e)=>b+(e.sets||[]).length,0), 0);
+  let ex = 0, sets = 0;
+  days.forEach(d => (d.blocks||[]).forEach(b => (b.exercises||[]).forEach(e => { ex++; sets += (e.sets||[]).length; })));
   return { days: days.length, ex, sets };
 }
-
-function loadWeights(pid) {
-  try { const v = localStorage.getItem('cx-w-' + pid); return v ? JSON.parse(v) : {}; } catch { return {}; }
+function dayExCount(d) {
+  return (d.blocks||[]).reduce((a,b) => a + (b.exercises||[]).length, 0);
 }
-function storeWeights(pid, w) {
-  try { localStorage.setItem('cx-w-' + pid, JSON.stringify(w)); } catch {}
+
+// Athlete-entered RIR + weight, keyed by `<exId>-<setId>` → { r, w }.
+function loadInputs(pid) {
+  try { const v = localStorage.getItem('cx-u-' + pid); return v ? JSON.parse(v) : {}; } catch { return {}; }
+}
+function storeInputs(pid, m) {
+  try { localStorage.setItem('cx-u-' + pid, JSON.stringify(m)); } catch {}
 }
 function shareUrl(id) {
   return window.location.origin + window.location.pathname + '#' + id;
@@ -191,16 +255,82 @@ function ViewerHome({ programs, loading, onSelect, onAdminTap }) {
   );
 }
 
+// ─── VIEWER: one exercise card (athlete enters RIR + weight) ──────────────────
+const VCOLS = "18px 40px 52px 38px 46px 1fr";
+function ExCard({ ex, label, inputs, onIn }) {
+  return (
+    <div className="card">
+      <div className="card-head">
+        {label && <span className="ex-tag">{label}</span>}
+        <span className="card-head-label">{(ex.name||"Exercise").toUpperCase()}</span>
+      </div>
+      <div className="col-labels" style={{gridTemplateColumns:VCOLS}}>
+        {["#","Reps","Tempo","RPE","RIR","Weight"].map((h,i) => <span key={i} className="col-label">{h}</span>)}
+      </div>
+      {(ex.sets||[]).map((s, si) => {
+        const k = ex.id+'-'+s.id, v = inputs[k] || {};
+        return (
+          <div key={s.id} className="set-row" style={{gridTemplateColumns:VCOLS}}>
+            <span style={{fontSize:13,color:"var(--blue)",fontFamily:"var(--font-h)",letterSpacing:1}}>{si+1}</span>
+            <span className="mono" style={{fontSize:13,color:"var(--muted)"}}>{s.reps}</span>
+            <span className="mono" style={{fontSize:13,color:"var(--muted)"}}>{s.tempo||"—"}</span>
+            <span className="mono" style={{fontSize:13,color:"var(--muted)"}}>{(s.rpe!=="" && s.rpe!=null) ? s.rpe : "—"}</span>
+            <input className="mono" inputMode="numeric" value={v.r||""} maxLength={2}
+              onChange={e => onIn(k, 'r', e.target.value.replace(/\D/g,'').slice(0,2))}
+              placeholder="–" style={{width:42,padding:"5px 4px",fontSize:14,fontWeight:600,textAlign:"center"}} />
+            <div style={{display:"flex",gap:5,alignItems:"center"}}>
+              <input className="mono" inputMode="numeric" value={v.w||""} maxLength={4}
+                onChange={e => onIn(k, 'w', e.target.value.replace(/\D/g,'').slice(0,4))}
+                placeholder="—" style={{width:56,padding:"5px 5px",fontSize:14,fontWeight:600}} />
+              <span style={{fontSize:10,color:"var(--muted)"}}>{ex.unit||"kg"}</span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── VIEWER: one block (timed / solo / superset / triset) ─────────────────────
+function ViewBlock({ b, inputs, onIn }) {
+  const wc = b.type==="warmup" || b.type==="cooldown";
+  if (wc && b.mode==="timed") {
+    return (
+      <div className="card">
+        <div className="card-head">
+          <span className="card-head-label">{(b.activity||BLABEL[b.type]).toUpperCase()}</span>
+          <span className="chip chip-dim">{BLABEL[b.type]}</span>
+        </div>
+        <div style={{padding:"0.875rem 1rem",fontSize:15,fontWeight:500}}>
+          {b.duration ? b.duration : <span style={{color:"var(--muted)"}}>Duration not set</span>}
+        </div>
+      </div>
+    );
+  }
+  if (b.type==="superset" || b.type==="triset") {
+    return (
+      <div className="grp">
+        <div className="grp-head">
+          <span className="chip">{BLABEL[b.type]}</span>
+          <span style={{fontSize:10,color:"var(--muted)",letterSpacing:1,textTransform:"uppercase"}}>Alternate exercises</span>
+        </div>
+        {b.exercises.map((ex, i) => <ExCard key={ex.id} ex={ex} label={["A","B","C"][i]} inputs={inputs} onIn={onIn} />)}
+      </div>
+    );
+  }
+  return <ExCard ex={b.exercises[0] || { id:"x", sets:[] }} inputs={inputs} onIn={onIn} />;
+}
+
 // ─── VIEWER: program detail (days) ────────────────────────────────────────────
 function ViewerProgram({ program, onBack, onAdminTap }) {
-  const [weights, setWeightsState] = useState(() => loadWeights(program.id));
-  const [toast, setToast] = useState(null);
+  const [inputs, setInputs] = useState(() => loadInputs(program.id));
+  const [toast, setToast]   = useState(null);
   const [dayIdx, setDayIdx] = useState(null);
   const days = program.days || [];
 
-  const handleWeight = (exId, setId, val) => {
-    const w = {...weights, [exId+'-'+setId]: val};
-    setWeightsState(w); storeWeights(program.id, w);
+  const handleIn = (k, field, val) => {
+    const m = { ...inputs, [k]: { ...(inputs[k]||{}), [field]: val } };
+    setInputs(m); storeInputs(program.id, m);
   };
 
   // ── Day list ──
@@ -217,7 +347,7 @@ function ViewerProgram({ program, onBack, onAdminTap }) {
           <p className="section-label">Training days</p>
           {days.length === 0 ? <p style={{color:"var(--muted)",fontSize:14}}>No days yet.</p>
           : days.map((d, di) => {
-            const n = (d.exercises||[]).length;
+            const n = dayExCount(d);
             return (
               <button key={d.id} className="prog-btn" onClick={() => setDayIdx(di)}>
                 <p style={{fontFamily:"var(--font-h)",fontSize:20,letterSpacing:"1.5px",marginBottom:4}}>{(d.name||("Day "+(di+1))).toUpperCase()}</p>
@@ -231,9 +361,18 @@ function ViewerProgram({ program, onBack, onAdminTap }) {
     );
   }
 
-  // ── Day detail (enter weights) ──
-  const day = days[dayIdx] || { name:"", exercises:[] };
-  const exercises = day.exercises || [];
+  // ── Day detail (warm up → workout → cool down) ──
+  const day    = days[dayIdx] || { name:"", blocks:[] };
+  const blocks = day.blocks || [];
+  const warm = blocks.filter(b => b.type==="warmup");
+  const main = blocks.filter(b => b.type==="solo" || b.type==="superset" || b.type==="triset");
+  const cool = blocks.filter(b => b.type==="cooldown");
+  const sections = [
+    ["Warm Up", warm],
+    ["Workout", main],
+    ["Cool Down", cool],
+  ].filter(([, list]) => list.length);
+
   return (
     <div className="app">
       <Logo onTripleTap={onAdminTap} />
@@ -242,29 +381,11 @@ function ViewerProgram({ program, onBack, onAdminTap }) {
         <span className="page-title" style={{fontSize:18}}>{(day.name||("Day "+(dayIdx+1))).toUpperCase()}</span>
       </div>
       <div className="screen" style={{paddingTop:"0.875rem"}}>
-        {exercises.length === 0 ? <p style={{color:"var(--muted)",fontSize:14}}>No exercises in this day.</p>
-        : exercises.map(ex => (
-          <div className="card" key={ex.id}>
-            <div className="card-head">
-              <span className="card-head-label">{(ex.name||"Exercise").toUpperCase()}</span>
-            </div>
-            <div className="col-labels" style={{gridTemplateColumns:"22px 1fr 68px 72px"}}>
-              {["#","Your weight","Reps","Tempo"].map((h,i) => <span key={i} className="col-label">{h}</span>)}
-            </div>
-            {(ex.sets||[]).map((s, si) => {
-              const key = ex.id+'-'+s.id;
-              return (
-                <div key={s.id} className="set-row" style={{gridTemplateColumns:"22px 1fr 68px 72px"}}>
-                  <span style={{fontSize:14,color:"var(--blue)",fontFamily:"var(--font-h)",letterSpacing:1}}>{si+1}</span>
-                  <div style={{display:"flex",gap:4,alignItems:"center"}}>
-                    <input type="number" className="mono" value={weights[key]||""} onChange={e => handleWeight(ex.id, s.id, e.target.value)} placeholder={String(s.targetWeight||0)} style={{flex:1,padding:"5px 6px",fontSize:15,fontWeight:600,minWidth:0}} />
-                    <span style={{fontSize:10,color:"var(--muted)",flexShrink:0}}>{s.unit||"kg"}</span>
-                  </div>
-                  <span className="mono" style={{fontSize:13,color:"var(--muted)"}}>{s.reps}<span style={{fontSize:10,color:"var(--dim)"}}> reps</span></span>
-                  <span className="mono" style={{fontSize:13,color:"var(--muted)"}}>{s.tempo||"—"}</span>
-                </div>
-              );
-            })}
+        {sections.length === 0 ? <p style={{color:"var(--muted)",fontSize:14}}>Nothing in this day yet.</p>
+        : sections.map(([title, list]) => (
+          <div key={title} style={{marginBottom:"1.25rem"}}>
+            <p className="section-label">{title}</p>
+            {list.map(b => <ViewBlock key={b.id} b={b} inputs={inputs} onIn={handleIn} />)}
           </div>
         ))}
       </div>
@@ -337,27 +458,102 @@ function AdminDash({ programs, loading, onEdit, onDelete, onNew, onExit }) {
   );
 }
 
+// ─── ADMIN: one editable block ────────────────────────────────────────────────
+const ACOLS = "20px 46px 56px 42px 48px 1fr 22px";
+function EditBlock({ b, bi, count, onChangeType, onMode, onField, onMove, onRemove, onUpdEx, onAddSet, onRmSet, onUpdSet }) {
+  const wc = b.type==="warmup" || b.type==="cooldown";
+  return (
+    <div className="card">
+      <div className="blk-head">
+        <select value={b.type} onChange={e => onChangeType(e.target.value)} style={{padding:"5px 6px",fontSize:12}}>
+          {BTYPES.map(t => <option key={t} value={t}>{BLABEL[t]}</option>)}
+        </select>
+        {wc && (
+          <div style={{display:"flex",gap:4}}>
+            <button className={"btn btn-sm"+(b.mode==="timed"?" btn-primary":"")} onClick={() => onMode("timed")}>Timed</button>
+            <button className={"btn btn-sm"+(b.mode==="exercise"?" btn-primary":"")} onClick={() => onMode("exercise")}>Exercise</button>
+          </div>
+        )}
+        <span style={{flex:1}} />
+        <button className="btn btn-sm btn-ghost" onClick={() => onMove(-1)} disabled={bi===0} title="Move up">▲</button>
+        <button className="btn btn-sm btn-ghost" onClick={() => onMove(1)} disabled={bi===count-1} title="Move down">▼</button>
+        <button className="btn btn-sm btn-danger" onClick={onRemove}>✕</button>
+      </div>
+
+      {wc && b.mode==="timed" ? (
+        <div className="timed-row">
+          <input value={b.activity} onChange={e => onField("activity", e.target.value)} placeholder="Activity (e.g. Bike)" style={{flex:1}} />
+          <input value={b.duration} onChange={e => onField("duration", e.target.value)} placeholder="Duration (e.g. 10 min)" style={{width:130}} />
+        </div>
+      ) : (
+        b.exercises.map((ex, xi) => (
+          <div key={ex.id} style={xi>0 ? {borderTop:"1px solid var(--border2)"} : null}>
+            <div style={{padding:"0.625rem 1rem",display:"flex",alignItems:"center",gap:8}}>
+              {(b.type==="superset"||b.type==="triset") && <span className="ex-tag">{["A","B","C"][xi]}</span>}
+              <input className="plain-input" value={ex.name} onChange={e => onUpdEx(xi,"name",e.target.value)} placeholder="Exercise name" />
+              <select value={ex.unit} onChange={e => onUpdEx(xi,"unit",e.target.value)} style={{width:54,padding:"5px 3px",fontSize:11}}>
+                <option>kg</option><option>lbs</option>
+              </select>
+            </div>
+            <div className="col-labels" style={{gridTemplateColumns:ACOLS}}>
+              {["#","Reps","Tempo","RPE","RIR","Weight",""].map((h,i) => <span key={i} className="col-label">{h}</span>)}
+            </div>
+            {ex.sets.map((s, si) => (
+              <div key={s.id} className="set-row" style={{gridTemplateColumns:ACOLS}}>
+                <span style={{fontSize:13,color:"var(--blue)",fontFamily:"var(--font-h)",letterSpacing:1}}>{si+1}</span>
+                <input type="number" className="mono" value={s.reps} onChange={e => onUpdSet(xi,si,"reps",parseInt(e.target.value)||0)} style={{width:"100%",padding:"5px 5px",fontSize:13,minWidth:0}} />
+                <input className="mono" value={s.tempo} onChange={e => onUpdSet(xi,si,"tempo",e.target.value)} placeholder="3010" style={{width:"100%",padding:"5px 5px",fontSize:13,minWidth:0}} />
+                <input className="mono" inputMode="numeric" value={s.rpe} onChange={e => onUpdSet(xi,si,"rpe",e.target.value.replace(/[^\d.]/g,'').slice(0,3))} placeholder="RPE" style={{width:"100%",padding:"5px 4px",fontSize:13,minWidth:0,textAlign:"center"}} />
+                <input className="mono" value="" disabled placeholder="RIR" title="Entered by the athlete" style={{width:"100%",padding:"5px 4px",fontSize:12,minWidth:0,textAlign:"center"}} />
+                <input className="mono" value="" disabled placeholder="Weight" title="Entered by the athlete" style={{width:"100%",padding:"5px 5px",fontSize:12,minWidth:0}} />
+                <button onClick={() => onRmSet(xi,si)} style={{background:"none",border:"none",color:"var(--muted)",fontSize:16,cursor:"pointer",padding:0,lineHeight:1}}>✕</button>
+              </div>
+            ))}
+            <div style={{padding:"8px 1rem"}}>
+              <button className="btn btn-sm" onClick={() => onAddSet(xi)}>+ Set</button>
+            </div>
+          </div>
+        ))
+      )}
+    </div>
+  );
+}
+
 // ─── ADMIN: editor ───────────────────────────────────────────────────────────
 function AdminEditor({ program, onSave, onCancel, saving }) {
-  const mkSet = (p) => ({ id:uid(), reps:p?.reps||8, tempo:p?.tempo||"3010", targetWeight:p?.targetWeight||0, unit:p?.unit||"kg" });
-  const mkEx  = ()  => ({ id:uid(), name:"", sets:[mkSet()] });
-  const mkDay = (n) => ({ id:uid(), name:"Day "+n, exercises:[] });
+  const mkDay = (n) => ({ id:uid(), name:"Day "+n, blocks:[mkBlock("solo")] });
 
   const [name, setName] = useState(program?.name||"");
   const [days, setDays] = useState(() => (program?.days && program.days.length) ? program.days : [mkDay(1)]);
   const [toast, setToast] = useState(null);
 
-  const setDay = (di, fn)     => setDays(ds => ds.map((d,i)=> i===di ? fn(d) : d));
-  const setEx  = (di, ei, fn) => setDay(di, d => ({...d, exercises: d.exercises.map((e,i)=> i===ei ? fn(e) : e)}));
+  const setDay   = (di, fn)        => setDays(ds => ds.map((d,i)=> i===di ? fn(d) : d));
+  const setBlock = (di, bi, fn)    => setDay(di, d => ({...d, blocks: d.blocks.map((b,i)=> i===bi ? fn(b) : b)}));
+  const setEx    = (di, bi, xi, fn)=> setBlock(di, bi, b => ({...b, exercises: b.exercises.map((e,i)=> i===xi ? fn(e) : e)}));
 
-  const addDay = ()           => setDays(ds => [...ds, mkDay(ds.length+1)]);
-  const rmDay  = (di)         => setDays(ds => ds.filter((_,i)=>i!==di));
-  const addEx  = (di)         => setDay(di, d => ({...d, exercises:[...d.exercises, mkEx()]}));
-  const rmEx   = (di,ei)      => setDay(di, d => ({...d, exercises:d.exercises.filter((_,i)=>i!==ei)}));
-  const updEx  = (di,ei,k,v)  => setEx(di,ei, e => ({...e, [k]:v}));
-  const addSet = (di,ei)      => setEx(di,ei, e => ({...e, sets:[...e.sets, mkSet(e.sets[e.sets.length-1])]}));
-  const rmSet  = (di,ei,si)   => setEx(di,ei, e => ({...e, sets:e.sets.filter((_,i)=>i!==si)}));
-  const updSet = (di,ei,si,k,v) => setEx(di,ei, e => ({...e, sets:e.sets.map((s,i)=> i===si ? {...s,[k]:v} : s)}));
+  const addDay   = ()              => setDays(ds => [...ds, mkDay(ds.length+1)]);
+  const rmDay    = (di)            => setDays(ds => ds.filter((_,i)=>i!==di));
+  const addBlock = (di)            => setDay(di, d => ({...d, blocks:[...d.blocks, mkBlock("solo")]}));
+  const rmBlock  = (di,bi)         => setDay(di, d => ({...d, blocks:d.blocks.filter((_,i)=>i!==bi)}));
+  const moveBlock= (di,bi,dir)     => setDay(di, d => {
+    const arr = d.blocks.slice(); const j = bi+dir;
+    if (j<0 || j>=arr.length) return d;
+    [arr[bi], arr[j]] = [arr[j], arr[bi]];
+    return {...d, blocks:arr};
+  });
+  const changeType = (di,bi,t) => setBlock(di,bi, b => {
+    const wc = t==="warmup" || t==="cooldown";
+    const mode = wc ? "timed" : "exercise";
+    return { ...b, type:t, mode, exercises: mode==="timed" ? [] : fitEx(b.exercises, EXCOUNT[t]) };
+  });
+  const setMode = (di,bi,mode) => setBlock(di,bi, b => ({
+    ...b, mode, exercises: mode==="timed" ? [] : fitEx(b.exercises, EXCOUNT[b.type]||1),
+  }));
+  const updField = (di,bi,k,v)     => setBlock(di,bi, b => ({...b, [k]:v}));
+  const updEx    = (di,bi,xi,k,v)  => setEx(di,bi,xi, e => ({...e, [k]:v}));
+  const addSet   = (di,bi,xi)      => setEx(di,bi,xi, e => ({...e, sets:[...e.sets, mkSet(e.sets[e.sets.length-1])]}));
+  const rmSet    = (di,bi,xi,si)   => setEx(di,bi,xi, e => ({...e, sets:e.sets.length>1 ? e.sets.filter((_,i)=>i!==si) : e.sets}));
+  const updSet   = (di,bi,xi,si,k,v)=> setEx(di,bi,xi, e => ({...e, sets:e.sets.map((s,i)=> i===si ? {...s,[k]:v} : s)}));
 
   return (
     <div className="app">
@@ -374,41 +570,31 @@ function AdminEditor({ program, onSave, onCancel, saving }) {
       </div>
       <div className="screen" style={{paddingTop:"0.875rem"}}>
         <input className="big-input" value={name} onChange={e=>setName(e.target.value)} placeholder="Program name (e.g. Hypertrophy Block)" />
+        <p style={{fontSize:11,color:"var(--muted)",marginBottom:"1.25rem",lineHeight:1.5}}>
+          Set #, reps, tempo & RPE are set here. RIR &amp; weight are filled in by the athlete.
+        </p>
         {days.map((day,di) => (
           <div className="day-block" key={day.id}>
             <div className="day-head">
               <input className="plain-input-head" style={{fontSize:22}} value={day.name} onChange={e=>setDay(di, d=>({...d,name:e.target.value}))} placeholder={"Day "+(di+1)} />
               <button className="btn btn-sm btn-danger" onClick={()=>{ if(confirm('Delete "'+(day.name||("Day "+(di+1)))+'"?')) rmDay(di); }}>Delete day</button>
             </div>
-            {day.exercises.map((ex,ei) => (
-              <div className="card" key={ex.id}>
-                <div className="card-head">
-                  <input className="plain-input-head" value={ex.name} onChange={e=>updEx(di,ei,"name",e.target.value)} placeholder="Exercise name" />
-                  <button className="btn btn-sm btn-danger" onClick={()=>rmEx(di,ei)}>✕</button>
-                </div>
-                <div className="col-labels" style={{gridTemplateColumns:"22px 58px 76px 1fr 22px"}}>
-                  {["#","Reps","Tempo","Weight",""].map((h,i)=><span key={i} className="col-label">{h}</span>)}
-                </div>
-                {ex.sets.map((s,si) => (
-                  <div key={s.id} className="set-row" style={{gridTemplateColumns:"22px 58px 76px 1fr 22px"}}>
-                    <span style={{fontSize:13,color:"var(--blue)",fontFamily:"var(--font-h)",letterSpacing:1}}>{si+1}</span>
-                    <input type="number" className="mono" value={s.reps} onChange={e=>updSet(di,ei,si,"reps",parseInt(e.target.value)||0)} style={{width:"100%",padding:"5px 6px",fontSize:13}} />
-                    <input className="mono" value={s.tempo} onChange={e=>updSet(di,ei,si,"tempo",e.target.value)} placeholder="3010" style={{width:"100%",padding:"5px 6px",fontSize:13}} />
-                    <div style={{display:"flex",gap:4}}>
-                      <input type="number" className="mono" value={s.targetWeight} onChange={e=>updSet(di,ei,si,"targetWeight",parseFloat(e.target.value)||0)} style={{flex:1,padding:"5px 6px",fontSize:13,minWidth:0}} />
-                      <select value={s.unit} onChange={e=>updSet(di,ei,si,"unit",e.target.value)} style={{width:46,padding:"5px 3px",fontSize:11}}>
-                        <option>kg</option><option>lbs</option>
-                      </select>
-                    </div>
-                    <button onClick={()=>rmSet(di,ei,si)} style={{background:"none",border:"none",color:"var(--muted)",fontSize:16,cursor:"pointer",padding:0,lineHeight:1}}>✕</button>
-                  </div>
-                ))}
-                <div style={{padding:"8px 1rem"}}>
-                  <button className="btn btn-sm" onClick={()=>addSet(di,ei)}>+ Set</button>
-                </div>
-              </div>
+            {day.blocks.map((b,bi) => (
+              <EditBlock
+                key={b.id}
+                b={b} bi={bi} count={day.blocks.length}
+                onChangeType={(t) => changeType(di,bi,t)}
+                onMode={(m) => setMode(di,bi,m)}
+                onField={(k,v) => updField(di,bi,k,v)}
+                onMove={(dir) => moveBlock(di,bi,dir)}
+                onRemove={() => rmBlock(di,bi)}
+                onUpdEx={(xi,k,v) => updEx(di,bi,xi,k,v)}
+                onAddSet={(xi) => addSet(di,bi,xi)}
+                onRmSet={(xi,si) => rmSet(di,bi,xi,si)}
+                onUpdSet={(xi,si,k,v) => updSet(di,bi,xi,si,k,v)}
+              />
             ))}
-            <button className="btn btn-full" onClick={()=>addEx(di)}>+ Exercise</button>
+            <button className="btn btn-full" onClick={()=>addBlock(di)}>+ Block</button>
           </div>
         ))}
         <button className="btn btn-full btn-primary" onClick={addDay}>+ Day</button>
@@ -455,8 +641,8 @@ function App() {
 
   const handleSave = async (prog) => {
     setSaving(true);
-    // The day structure is stored in the existing `exercises` JSONB column so
-    // no Supabase schema migration is needed (normalizeDays reads it back).
+    // The day/block structure is stored in the existing `exercises` JSONB column
+    // so no Supabase schema migration is needed (normalizeDays reads it back).
     const payload = { id: prog.id, name: prog.name, exercises: prog.days, updated_at: new Date().toISOString() };
     if (!editing) payload.created_at = new Date().toISOString();
     await sb.from("programs").upsert(payload, { onConflict: "id" });
