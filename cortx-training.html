@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="CORTX">
+<meta name="theme-color" content="#000000">
+<title>CORTX Training</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+:root {
+  --blue: #1782c5;
+  --bg: #000;
+  --card: #0f0f0f;
+  --border: #222;
+  --border2: #181818;
+  --text: #fff;
+  --muted: rgba(255,255,255,0.45);
+  --dim: rgba(255,255,255,0.18);
+  --font-h: 'Bebas Neue', sans-serif;
+  --font-b: 'Outfit', sans-serif;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+html, body { min-height: 100%; background: var(--bg); color: var(--text); font-family: var(--font-b); }
+#root { min-height: 100vh; }
+.app { max-width: 480px; margin: 0 auto; }
+input, select {
+  background: #181818; border: 1px solid var(--border); border-radius: 6px;
+  color: var(--text); font-family: var(--font-b); font-size: 14px;
+  padding: 8px 10px; outline: none; transition: border-color 0.15s;
+}
+input:focus, select:focus { border-color: var(--blue); }
+input::placeholder { color: var(--dim); }
+select option { background: #181818; }
+input[type=number]::-webkit-inner-spin-button { opacity: 0.3; }
+button { font-family: var(--font-b); cursor: pointer; }
+.logo-bar {
+  background: #000; border-bottom: 1px solid var(--border);
+  padding: 10px 1rem; display: flex; align-items: flex-end;
+}
+.logo-wordmark { font-family: var(--font-h); font-size: 30px; letter-spacing: 3px; line-height: 1; color: #fff; user-select: none; }
+.logo-wordmark span { color: var(--blue); }
+.logo-sub { font-size: 9px; color: var(--dim); letter-spacing: 4px; text-transform: uppercase; font-weight: 300; margin-bottom: 3px; }
+.topbar { display: flex; align-items: center; gap: 10px; padding: 1rem 1rem 0.25rem; }
+.page-title { font-family: var(--font-h); font-size: 24px; letter-spacing: 2px; color: #fff; flex: 1; }
+.back-btn { background: none; border: none; color: var(--muted); font-size: 20px; padding: 4px 2px; line-height: 1; transition: color 0.15s; }
+.back-btn:hover { color: #fff; }
+.screen { padding: 1rem 1rem 2rem; }
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+  padding: 9px 16px; font-size: 12px; font-weight: 600; letter-spacing: 1px;
+  text-transform: uppercase; border-radius: 6px; border: 1px solid var(--border);
+  background: transparent; color: var(--text); transition: all 0.15s;
+}
+.btn:hover { border-color: rgba(255,255,255,0.35); background: rgba(255,255,255,0.04); }
+.btn-primary { background: var(--blue); border-color: var(--blue); color: #fff; }
+.btn-primary:hover { background: #1a93db; border-color: #1a93db; }
+.btn-sm { padding: 5px 11px; font-size: 11px; }
+.btn-danger { border-color: rgba(220,60,60,0.3); color: #e05555; }
+.btn-danger:hover { background: rgba(220,60,60,0.08); }
+.btn-ghost { border-color: transparent; color: var(--muted); }
+.btn-ghost:hover { color: #fff; background: transparent; }
+.btn-full { width: 100%; }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 0.875rem; overflow: hidden; }
+.card-head { padding: 0.875rem 1rem; border-bottom: 1px solid var(--border2); display: flex; align-items: center; gap: 8px; }
+.card-head-label { font-family: var(--font-h); font-size: 18px; letter-spacing: 1.5px; flex: 1; color: #fff; }
+.col-labels { display: grid; padding: 6px 1rem 3px; gap: 6px; }
+.col-label { font-size: 9px; color: var(--dim); text-transform: uppercase; letter-spacing: 1.5px; font-weight: 500; }
+.set-row { display: grid; gap: 6px; padding: 8px 1rem; align-items: center; border-bottom: 1px solid var(--border2); }
+.set-row:last-child { border-bottom: none; }
+.section-label { font-size: 10px; color: var(--dim); text-transform: uppercase; letter-spacing: 2.5px; font-weight: 500; margin-bottom: 0.75rem; }
+.chip { display: inline-flex; align-items: center; padding: 3px 8px; background: rgba(23,130,197,0.12); border: 1px solid rgba(23,130,197,0.25); border-radius: 4px; font-size: 10px; color: var(--blue); font-weight: 600; letter-spacing: 1px; text-transform: uppercase; }
+.chip-dim { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.1); color: var(--muted); }
+.plain-input { background: none; border: none; outline: none; color: var(--text); font-family: var(--font-b); font-size: 14px; font-weight: 500; padding: 0; width: 100%; }
+.plain-input-head { background: none; border: none; outline: none; color: #fff; font-family: var(--font-h); font-size: 18px; letter-spacing: 1.5px; padding: 0; width: 100%; }
+.big-input { width: 100%; background: #181818; border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-family: var(--font-b); font-size: 15px; font-weight: 500; padding: 12px 14px; outline: none; margin-bottom: 1.25rem; }
+.big-input:focus { border-color: var(--blue); }
+.big-input::placeholder { color: var(--dim); }
+.prog-btn { display: block; width: 100%; text-align: left; background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 1rem; margin-bottom: 0.625rem; transition: border-color 0.15s; }
+.prog-btn:hover { border-color: var(--blue); }
+.empty-state { text-align: center; padding: 4rem 1rem; color: var(--muted); }
+.empty-state h2 { font-family: var(--font-h); font-size: 36px; letter-spacing: 3px; color: #fff; margin-bottom: 0.625rem; }
+.toast { position: fixed; bottom: 1.5rem; left: 50%; transform: translateX(-50%); background: var(--blue); color: #fff; padding: 10px 20px; border-radius: 8px; font-size: 13px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; z-index: 999; white-space: nowrap; pointer-events: none; animation: slideUp 0.2s ease; }
+@keyframes slideUp { from { opacity: 0; transform: translateX(-50%) translateY(8px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+.loading-screen { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; gap: 1rem; }
+.mono { font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+
+// ╔══════════════════════════════════════════════════╗
+// ║  STEP 1: Paste your Supabase values here         ║
+// ╚══════════════════════════════════════════════════╝
+const SUPABASE_URL      = 'https://qlvpphbshzmzybimyuee.supabase.co/rest/v1/';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFsdnBwaGJzaHptenliaW15dWVlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxOTI5NTksImV4cCI6MjA5NDc2ODk1OX0.Rq_JOF4t-LYD92H5HnA5O6O3BhhxQ7jW1DOCBg4w1Kk';
+const ADMIN_PASSWORD    = 'Ple@se.Let.Me.In.21';
+// ════════════════════════════════════════════════════
+
+const { useState, useEffect, useRef } = React;
+const sb  = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const uid = () => Math.random().toString(36).slice(2, 9);
+
+function loadWeights(pid) {
+  try { const v = localStorage.getItem('cx-w-' + pid); return v ? JSON.parse(v) : {}; } catch { return {}; }
+}
+function storeWeights(pid, w) {
+  try { localStorage.setItem('cx-w-' + pid, JSON.stringify(w)); } catch {}
+}
+function shareUrl(id) {
+  return window.location.origin + window.location.pathname + '#' + id;
+}
+function copyToClipboard(text, cb) {
+  if (navigator.clipboard) { navigator.clipboard.writeText(text).then(cb); }
+  else { const el = document.createElement('textarea'); el.value = text; document.body.appendChild(el); el.select(); document.execCommand('copy'); document.body.removeChild(el); cb(); }
+}
+
+function Logo({ onTripleTap }) {
+  const count = useRef(0);
+  const timer = useRef(null);
+  const tap = () => {
+    count.current += 1;
+    clearTimeout(timer.current);
+    if (count.current >= 3) { count.current = 0; onTripleTap(); }
+    else { timer.current = setTimeout(() => { count.current = 0; }, 700); }
+  };
+  return (
+    <div className="logo-bar">
+      <div onClick={tap} style={{cursor:"default"}}>
+        <div className="logo-wordmark">CORT<span>X</span></div>
+        <div className="logo-sub">Sports Performance</div>
+      </div>
+    </div>
+  );
+}
+function BackBtn({ onClick }) { return <button className="back-btn" onClick={onClick}>←</button>; }
+function Toast({ msg, onDone }) {
+  useEffect(() => { const t = setTimeout(onDone, 2200); return () => clearTimeout(t); }, []);
+  return <div className="toast">{msg}</div>;
+}
+
+// ─── VIEWER: list ─────────────────────────────────────────────────────────────
+function ViewerHome({ programs, loading, onSelect, onAdminTap }) {
+  return (
+    <div className="app">
+      <Logo onTripleTap={onAdminTap} />
+      <div className="screen" style={{paddingTop:"1.25rem"}}>
+        <p className="section-label">Programs</p>
+        {loading ? <p style={{color:"var(--muted)",fontSize:14}}>Loading...</p>
+        : programs.length === 0 ? (
+          <div className="empty-state"><h2>No programs</h2><p style={{fontSize:14}}>Check back soon.</p></div>
+        ) : programs.map(p => (
+          <button key={p.id} className="prog-btn" onClick={() => onSelect(p)}>
+            <p style={{fontFamily:"var(--font-h)",fontSize:20,letterSpacing:"1.5px",marginBottom:4}}>{p.name.toUpperCase()}</p>
+            <p style={{fontSize:12,color:"var(--muted)"}}>
+              {(p.exercises||[]).length} exercise{(p.exercises||[]).length!==1?"s":""} &nbsp;·&nbsp; {(p.exercises||[]).reduce((a,e)=>a+(e.sets||[]).length,0)} sets
+            </p>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── VIEWER: program detail ───────────────────────────────────────────────────
+function ViewerProgram({ program, onBack, onAdminTap }) {
+  const [weights, setWeightsState] = useState(() => loadWeights(program.id));
+  const [toast, setToast] = useState(null);
+  const exercises = program.exercises || [];
+
+  const handleWeight = (exId, setId, val) => {
+    const w = {...weights, [exId+'-'+setId]: val};
+    setWeightsState(w); storeWeights(program.id, w);
+  };
+
+  return (
+    <div className="app">
+      <Logo onTripleTap={onAdminTap} />
+      <div className="topbar">
+        <BackBtn onClick={onBack} />
+        <span className="page-title" style={{fontSize:18}}>{program.name.toUpperCase()}</span>
+        <button className="btn btn-sm btn-ghost" onClick={() => copyToClipboard(shareUrl(program.id), () => setToast("Link copied!"))}>Share</button>
+      </div>
+      <div className="screen" style={{paddingTop:"0.875rem"}}>
+        {exercises.length === 0 ? <p style={{color:"var(--muted)",fontSize:14}}>No exercises yet.</p>
+        : exercises.map(ex => (
+          <div className="card" key={ex.id}>
+            <div className="card-head">
+              <span className="card-head-label">{(ex.name||"Exercise").toUpperCase()}</span>
+            </div>
+            <div className="col-labels" style={{gridTemplateColumns:"22px 1fr 68px 72px"}}>
+              {["#","Your weight","Reps","Tempo"].map((h,i) => <span key={i} className="col-label">{h}</span>)}
+            </div>
+            {(ex.sets||[]).map((s, si) => {
+              const key = ex.id+'-'+s.id;
+              return (
+                <div key={s.id} className="set-row" style={{gridTemplateColumns:"22px 1fr 68px 72px"}}>
+                  <span style={{fontSize:14,color:"var(--blue)",fontFamily:"var(--font-h)",letterSpacing:1}}>{si+1}</span>
+                  <div style={{display:"flex",gap:4,alignItems:"center"}}>
+                    <input type="number" className="mono" value={weights[key]||""} onChange={e => handleWeight(ex.id, s.id, e.target.value)} placeholder={String(s.targetWeight||0)} style={{flex:1,padding:"5px 6px",fontSize:15,fontWeight:600,minWidth:0}} />
+                    <span style={{fontSize:10,color:"var(--muted)",flexShrink:0}}>{s.unit||"kg"}</span>
+                  </div>
+                  <span className="mono" style={{fontSize:13,color:"var(--muted)"}}>{s.reps}<span style={{fontSize:10,color:"var(--dim)"}}> reps</span></span>
+                  <span className="mono" style={{fontSize:13,color:"var(--muted)"}}>{s.tempo||"—"}</span>
+                </div>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+      {toast && <Toast msg={toast} onDone={() => setToast(null)} />}
+    </div>
+  );
+}
+
+// ─── ADMIN: gate ─────────────────────────────────────────────────────────────
+function AdminGate({ onAuth, onCancel }) {
+  const [pw, setPw] = useState("");
+  const [err, setErr] = useState(false);
+  const attempt = () => {
+    if (pw === ADMIN_PASSWORD) onAuth();
+    else { setErr(true); setPw(""); setTimeout(() => setErr(false), 1500); }
+  };
+  return (
+    <div className="app">
+      <Logo onTripleTap={() => {}} />
+      <div className="screen" style={{paddingTop:"2rem"}}>
+        <p className="section-label" style={{marginBottom:"1.5rem"}}>Admin access</p>
+        <input type="password" value={pw} onChange={e => setPw(e.target.value)} onKeyDown={e => e.key==="Enter"&&attempt()} placeholder="Password" style={{width:"100%",marginBottom:"0.875rem",borderColor:err?"#e05555":undefined}} autoFocus />
+        {err && <p style={{fontSize:12,color:"#e05555",marginBottom:"0.875rem"}}>Wrong password</p>}
+        <div style={{display:"flex",gap:8}}>
+          <button className="btn btn-primary" style={{flex:1}} onClick={attempt}>Enter</button>
+          <button className="btn" onClick={onCancel}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── ADMIN: dashboard ────────────────────────────────────────────────────────
+function AdminDash({ programs, loading, onEdit, onDelete, onNew, onExit }) {
+  const [toast, setToast] = useState(null);
+  return (
+    <div className="app">
+      <Logo onTripleTap={() => {}} />
+      <div className="topbar">
+        <BackBtn onClick={onExit} />
+        <span className="page-title">Admin</span>
+        <button className="btn btn-primary btn-sm" onClick={onNew}>+ New</button>
+      </div>
+      <div className="screen" style={{paddingTop:"0.875rem"}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.875rem"}}>
+          <p className="section-label" style={{margin:0}}>Programs</p>
+          <span className="chip chip-dim">Admin mode</span>
+        </div>
+        {loading ? <p style={{color:"var(--muted)",fontSize:14}}>Loading...</p>
+        : programs.length === 0 ? (
+          <div className="empty-state"><h2>No programs</h2><p style={{marginBottom:"1.5rem",fontSize:14}}>Create your first program.</p><button className="btn btn-primary" onClick={onNew}>+ New Program</button></div>
+        ) : programs.map(p => (
+          <div className="card" key={p.id}>
+            <div className="card-head">
+              <span className="card-head-label" style={{fontSize:16}}>{p.name.toUpperCase()}</span>
+              <button className="btn btn-sm" onClick={() => onEdit(p)}>Edit</button>
+              <button className="btn btn-sm btn-danger" onClick={() => { if(confirm('Delete "'+p.name+'"?')) onDelete(p.id); }}>✕</button>
+            </div>
+            <div style={{padding:"0.75rem 1rem",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <p style={{fontSize:12,color:"var(--muted)"}}>
+                {(p.exercises||[]).length} exercise{(p.exercises||[]).length!==1?"s":""} · {(p.exercises||[]).reduce((a,e)=>a+(e.sets||[]).length,0)} sets
+              </p>
+              <button className="btn btn-ghost btn-sm" onClick={() => copyToClipboard(shareUrl(p.id), () => setToast("Link copied!"))}>Copy link</button>
+            </div>
+          </div>
+        ))}
+      </div>
+      {toast && <Toast msg={toast} onDone={() => setToast(null)} />}
+    </div>
+  );
+}
+
+// ─── ADMIN: editor ───────────────────────────────────────────────────────────
+function AdminEditor({ program, onSave, onCancel, saving }) {
+  const [name, setName]           = useState(program?.name||"");
+  const [exercises, setExercises] = useState(program?.exercises||[]);
+  const [toast, setToast]         = useState(null);
+
+  const mkSet = (p) => ({ id:uid(), reps:p?.reps||8, tempo:p?.tempo||"3010", targetWeight:p?.targetWeight||0, unit:p?.unit||"kg" });
+  const mkEx  = ()  => ({ id:uid(), name:"", sets:[mkSet()] });
+  const addEx  = ()          => setExercises([...exercises, mkEx()]);
+  const rmEx   = (ei)        => setExercises(exercises.filter((_,i)=>i!==ei));
+  const updEx  = (ei,k,v)    => { const e=[...exercises]; e[ei]={...e[ei],[k]:v}; setExercises(e); };
+  const addSet = (ei)        => { const e=[...exercises]; const s=e[ei].sets; e[ei].sets=[...s,mkSet(s[s.length-1])]; setExercises(e); };
+  const rmSet  = (ei,si)     => { const e=[...exercises]; e[ei].sets=e[ei].sets.filter((_,i)=>i!==si); setExercises(e); };
+  const updSet = (ei,si,k,v) => { const e=[...exercises]; e[ei].sets[si]={...e[ei].sets[si],[k]:v}; setExercises(e); };
+
+  return (
+    <div className="app">
+      <Logo onTripleTap={() => {}} />
+      <div className="topbar">
+        <BackBtn onClick={onCancel} />
+        <span className="page-title" style={{fontSize:18}}>{program ? "Edit" : "New Program"}</span>
+        <div style={{display:"flex",gap:6}}>
+          {program?.id && <button className="btn btn-sm" onClick={() => copyToClipboard(shareUrl(program.id), () => setToast("Link copied!"))}>Copy link</button>}
+          <button className="btn btn-primary btn-sm" onClick={() => name.trim()&&onSave({id:program?.id||uid(),name:name.trim(),exercises})} disabled={!name.trim()||saving}>
+            {saving?"Saving...":"Save"}
+          </button>
+        </div>
+      </div>
+      <div className="screen" style={{paddingTop:"0.875rem"}}>
+        <input className="big-input" value={name} onChange={e=>setName(e.target.value)} placeholder="Program name (e.g. Push Day A)" />
+        {exercises.map((ex,ei) => (
+          <div className="card" key={ex.id}>
+            <div className="card-head">
+              <input className="plain-input-head" value={ex.name} onChange={e=>updEx(ei,"name",e.target.value)} placeholder="Exercise name" />
+              <button className="btn btn-sm btn-danger" onClick={()=>rmEx(ei)}>✕</button>
+            </div>
+            <div className="col-labels" style={{gridTemplateColumns:"22px 58px 76px 1fr 22px"}}>
+              {["#","Reps","Tempo","Weight",""].map((h,i)=><span key={i} className="col-label">{h}</span>)}
+            </div>
+            {ex.sets.map((s,si) => (
+              <div key={s.id} className="set-row" style={{gridTemplateColumns:"22px 58px 76px 1fr 22px"}}>
+                <span style={{fontSize:13,color:"var(--blue)",fontFamily:"var(--font-h)",letterSpacing:1}}>{si+1}</span>
+                <input type="number" className="mono" value={s.reps} onChange={e=>updSet(ei,si,"reps",parseInt(e.target.value)||0)} style={{width:"100%",padding:"5px 6px",fontSize:13}} />
+                <input className="mono" value={s.tempo} onChange={e=>updSet(ei,si,"tempo",e.target.value)} placeholder="3010" style={{width:"100%",padding:"5px 6px",fontSize:13}} />
+                <div style={{display:"flex",gap:4}}>
+                  <input type="number" className="mono" value={s.targetWeight} onChange={e=>updSet(ei,si,"targetWeight",parseFloat(e.target.value)||0)} style={{flex:1,padding:"5px 6px",fontSize:13,minWidth:0}} />
+                  <select value={s.unit} onChange={e=>updSet(ei,si,"unit",e.target.value)} style={{width:46,padding:"5px 3px",fontSize:11}}>
+                    <option>kg</option><option>lbs</option>
+                  </select>
+                </div>
+                <button onClick={()=>rmSet(ei,si)} style={{background:"none",border:"none",color:"var(--muted)",fontSize:16,cursor:"pointer",padding:0,lineHeight:1}}>✕</button>
+              </div>
+            ))}
+            <div style={{padding:"8px 1rem"}}>
+              <button className="btn btn-sm" onClick={()=>addSet(ei)}>+ Set</button>
+            </div>
+          </div>
+        ))}
+        <button className="btn btn-full" onClick={addEx}>+ Exercise</button>
+      </div>
+      {toast && <Toast msg={toast} onDone={() => setToast(null)} />}
+    </div>
+  );
+}
+
+// ─── ROOT ─────────────────────────────────────────────────────────────────────
+function App() {
+  const [programs, setPrograms]       = useState([]);
+  const [loading, setLoading]         = useState(true);
+  const [screen, setScreen]           = useState("loading");
+  const [selected, setSelected]       = useState(null);
+  const [editing, setEditing]         = useState(null);
+  const [adminAuthed, setAdminAuthed] = useState(false);
+  const [saving, setSaving]           = useState(false);
+
+  const fetchPrograms = async () => {
+    const { data } = await sb.from("programs").select("*").order("created_at", { ascending: true });
+    if (data) setPrograms(data);
+    return data || [];
+  };
+
+  useEffect(() => {
+    const hash = window.location.hash.slice(1);
+    fetchPrograms().then(data => {
+      setLoading(false);
+      if (hash) {
+        const found = data.find(p => p.id === hash);
+        if (found) { setSelected(found); setScreen("view"); }
+        else setScreen("home");
+      } else { setScreen("home"); }
+    });
+  }, []);
+
+  const goHome = () => { window.location.hash = ""; setScreen("home"); };
+
+  const handleSelect = (p) => { window.location.hash = p.id; setSelected(p); setScreen("view"); };
+
+  const handleAdminTap = () => { if (adminAuthed) setScreen("admin-dash"); else setScreen("admin-gate"); };
+
+  const handleSave = async (prog) => {
+    setSaving(true);
+    const payload = { id: prog.id, name: prog.name, exercises: prog.exercises, updated_at: new Date().toISOString() };
+    if (!editing) payload.created_at = new Date().toISOString();
+    await sb.from("programs").upsert(payload, { onConflict: "id" });
+    await fetchPrograms();
+    setSaving(false); setEditing(null); setScreen("admin-dash");
+  };
+
+  const handleDelete = async (id) => {
+    await sb.from("programs").delete().eq("id", id);
+    setPrograms(prev => prev.filter(p => p.id !== id));
+  };
+
+  if (screen === "loading") return (
+    <div className="loading-screen">
+      <div style={{fontFamily:"var(--font-h)",fontSize:40,letterSpacing:5,color:"#fff"}}>CORT<span style={{color:"var(--blue)"}}>X</span></div>
+      <p style={{fontSize:10,color:"var(--dim)",letterSpacing:"4px",textTransform:"uppercase"}}>Loading</p>
+    </div>
+  );
+  if (screen === "admin-gate") return <AdminGate onAuth={() => { setAdminAuthed(true); setScreen("admin-dash"); }} onCancel={() => setScreen("home")} />;
+  if (screen === "admin-dash") return <AdminDash programs={programs} loading={loading} onEdit={p => { setEditing(p); setScreen("admin-edit"); }} onDelete={handleDelete} onNew={() => { setEditing(null); setScreen("admin-edit"); }} onExit={goHome} />;
+  if (screen === "admin-edit") return <AdminEditor program={editing} onSave={handleSave} onCancel={() => setScreen("admin-dash")} saving={saving} />;
+  if (screen === "view") return <ViewerProgram program={selected} onBack={goHome} onAdminTap={handleAdminTap} />;
+  return <ViewerHome programs={programs} loading={loading} onSelect={handleSelect} onAdminTap={handleAdminTap} />;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
