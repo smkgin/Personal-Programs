@@ -7,6 +7,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="apple-mobile-web-app-title" content="Personal Lifts">
 <meta name="theme-color" content="#000000">
+<meta name="format-detection" content="telephone=no, date=no, address=no, email=no">
 <title>Personal Lifts</title>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -27,7 +28,9 @@
   --font-b: 'Outfit', sans-serif;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
-html, body { min-height: 100%; background: var(--bg); color: var(--text); font-family: var(--font-b); }
+a, a:visited, a:active { color: inherit; text-decoration: none; }
+html, body { min-height: 100%; background: var(--bg); color: var(--text); font-family: var(--font-b); -webkit-text-size-adjust: 100%; }
+input, select, textarea, button { -webkit-text-fill-color: currentColor; }
 #root { min-height: 100vh; }
 .app { max-width: 480px; margin: 0 auto; }
 input, select {
